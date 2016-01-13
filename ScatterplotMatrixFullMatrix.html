@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+svg {
+  font: 10px sans-serif;
+  padding: 20px;
+}
+
+.axis,
+.frame {
+  shape-rendering: crispEdges;
+}
+
+.axis line {
+  stroke: #ddd;
+}
+
+.axis path {
+  display: none;
+}
+
+.frame {
+  fill: none;
+  stroke: #aaa;
+}
+
+.d3-tip {
+  line-height: 1;
+  font-weight: bold;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  border-radius: 2px;
+}
+
+/* Creates a small triangle extender for the tooltip */
+.d3-tip:after {
+  box-sizing: border-box;
+  display: inline;
+  font-size: 8px;
+  width: 100%;
+  line-height: 1;
+  color: rgba(0, 0, 0, 0.8);
+  content: "\25BC";
+  position: absolute;
+  text-align: center;
+}
+
+/* Style northward tooltips differently */
+.d3-tip.n:after {
+  margin: -1px 0 0 0;
+  top: 100%;
+  left: 0;
+}
+
+circle {
+  fill-opacity: .7;
+}
+
+</style>
+<body>
+<script src="http://d3js.org/d3.v3.min.js"></script>
+<script src="http://labratrevenge.com/d3-tip/javascripts/d3.tip.v0.6.3.js"></script>
+<script>
+
+var width = 1600,
+    size = 400,
+    padding = 70;
+
+var x = d3.scale.linear()
+    .range([padding / 2, size - padding / 2]);
+
+var y = d3.scale.linear()
+    .range([size - padding / 2, padding / 2]);
+
+var xAxis = d3.svg.axis()
+    .scale(x)
+    .orient("bottom")
+    .ticks(5);
+
+var yAxis = d3.svg.axis()
+    .scale(y)
+    .orient("left")
+    .ticks(5);
+
+var color = d3.scale.category20();
+
+var pivotColumns = ["partSize", "httpThreads"];
+
+d3.json("outputRedacted.log", function(error, jdata) {
+  if (error) return console.warn(error);
+  data = jdata;
+  dataMatrix = prepareJson(data);
+  //console.log(dataMatrix);
+  traitMatrix = makeMatrix(data);
+  //console.log(traitMatrix);
+  avgMatrix = makeAvgLists(data, dataMatrix);
+  //console.log("avgMatrix", avgMatrix);
+  n = data[pivotColumns[0]].length;
+  m = data[pivotColumns[1]].length;
+  //traitMatrix.each(myPlot);
+
+  var svg = d3.select("body").append("svg")
+      .attr("width", size * (n + 3.5) + padding + 200)
+      .attr("height", size * (m + 3.5) + padding + 200)
+    .append("g")
+      .attr("transform", "translate(" + padding + "," + padding / 2 + ")");
+
+  console.log(traitMatrix);
+
+  var cell = svg.selectAll(".cell")
+      .data(traitMatrix)
+    .enter().append("g")
+      .attr("class", "cell")
+      .attr("transform", function(d) { return "translate(" + d.i  * size + "," + (d.j + 1)* size  + ")"; })
+      .each(myPlot);
+
+  var cell2 = svg.selectAll(".cell2")
+      .data(avgMatrix[1])
+    .enter().append("g")
+      .attr("class", "cell2")
+      .attr("transform", function(d, i) { return "translate(" + (n) * size + "," + (i +1) * size + ")"; })
+      .each(meanPlot);
+
+  //console.log("avgMatrix", avgMatrix);
+
+  var cell3 = svg.selectAll(".cell3")
+      .data(avgMatrix[0])
+    .enter().append("g")
+      .attr("class", "cell3")
+      .attr("transform", function(d, i) { return "translate(" + i * size + "," + (m + 1) * size  +")"; })
+      .each(meanPlot2);
+
+
+
+  var cell4 = svg.selectAll(".cell4")
+      .data(avgMatrix)
+    .enter().append("g")
+      .attr("class", "cell4")
+      .attr("transform", function(d, i) { return "translate(" + ((0 * 3) * size) + "," + (i * (size+ 30) )  +")"; });//
+      //.each(meanPlot3);
+
+
+  function myPlot(p) {
+    width = size - padding;
+    height = size - padding;
+
+    var cell = d3.select(this);
+
+    var x0 = d3.scale.ordinal()
+        .rangeRoundBands([0, width], .1);
+
+    var x1 = d3.scale.ordinal();
+
+    var y = d3.scale.linear()
+        .range([height, 0]);
+
+    var xAxis = d3.svg.axis()
+        .scale(x0)
+        .orient("bottom");
+
+    var yAxis = d3.svg.axis()
+        .scale(y)
+        .orient("left")
+        .tickFormat(d3.format(".2s"));
+
+    elementData = dataMatrix[p.x][p.y]["tests"];
+    //console.log(elementData);
+    //console.log(elementData["DOWN"][0]);
+
+    tests = Object.keys(dataMatrix[p.x][p.y]["tests"]["DOWN"]);
+    downSpeeds = [];
+    upSpeeds = [];
+    groupedData = [];
+    for (i=0; i<tests.length; i++) {
+        tests[i] = "Test" + tests[i]
+        downSpeeds.push(parseFloat(elementData["DOWN"][i][" mbps"]));
+        upSpeeds.push(parseFloat(elementData["UP"][i][" mbps"]));
+        groupedData.push({"test" : tests[i], "trans": [{"name": "UP", "value": upSpeeds[i]}, {"name": "DOWN", "value": downSpeeds[i]}], "UP": upSpeeds[i], "DOWN": downSpeeds[i] });
+    };
+
+    //console.log(groupedData);
+    var directions = ["UP", "DOWN"];
+    groupedData.forEach(function(d) {
+      d.direct = directions.map(function(name) { return {name: name, value: +d[name]}; }); //adds a function to data that allows you to request an array of the age ranges and their values for a given Interval
+    });
+
+    x0.domain(groupedData.map(function(d) { return d.test; }));
+    //console.log(groupedData.map(function(d) { return d.test; }));
+    x1.domain(directions).rangeRoundBands([0, x0.rangeBand()]);
+
+    //y.domain([d3.min([d3.min(upSpeeds), d3.min(downSpeeds)]), d3.max([d3.max(upSpeeds), d3.max(downSpeeds)])]);
+
+    y.domain([globMin, globMax+10]);
+
+    /*cell.append("rect")
+        .attr("class", "frame")
+        .attr("x", padding / 2)
+        .attr("y", padding / 2)
+        .attr("width", size - padding)
+        .attr("height", size - padding)
+        .attr("transform", "translate(" + width + "," + height + ")");*/
+
+    cell.append("g")
+        .attr("class", "x axis")
+        .attr("transform", "translate(0," + height + ")")
+        .call(xAxis);
+
+    cell.append("g")
+        .attr("class", "y axis")
+        .call(yAxis)
+      .append("text")
+        //.attr("transform", "rotate(-90)")
+        .attr("y", 10)
+        .style("font-size","12px")
+        .attr("dy", ".71em")
+        //.style("text-anchor", "end")
+        .text("mbps: " + pivotColumns[0] + "= " + p.x + " vs. " + pivotColumns[1] + "= "+ p.y );
+
+    //console.log(p.x + "" + p.y);
+
+    /*cell.append("text")
+          .attr("x", padding)
+          .attr("y", padding)
+          .attr("dy", ".71em")
+          .text(function(d) { return d.x; });*/
+
+    var Test = cell.selectAll(".Test")
+        .data(groupedData) //an array with each element a dict, keys given by Interval and ages
+      .enter().append("g")
+        .style("stroke", "black")
+        .attr("class", "g")
+        .attr("transform", function(d) { return "translate(" + x0(d.test) + ",0)"; });
+
+    //console.log(groupedData);
+
+    Test.selectAll("rect")
+         .data(function(d) { return d.direct; })
+       .enter().append("rect")
+         .attr("width", x1.rangeBand())
+         .attr("x", function(d) { return x1(d.name); })
+         .attr("y", function(d) { return y(d.value); })
+         .attr("height", function(d) { return height - y(d.value); })
+         .style("fill", function(d) {  return color(d.name); })
+               .on("mouseover", function(d) {
+             d3.select(this).style("fill-opacity", .3);
+             //d3.select(this).glow({color: '#f00',width: 40});
+             //tip.show(d);
+             })  
+
+               .on("mouseout", function(d) {
+                     d3.select(this).style("fill-opacity", 1)
+               });    
+
+
+    //console.log(data);
+
+    /*cell.selectAll("circle")
+        .data(data)
+      .enter().append("circle")
+        .attr("cx", function(d) { return x(d[p.x]); })
+        .attr("cy", function(d) { return y(d[p.y]); })
+        .attr("r", 3)
+        .style("fill", function(d) { return color(d.species); }); //wow color scales take strings natively!*/
+
+  };
+
+  function meanPlot(p) {
+    width = size - padding;
+    height = size - padding;
+
+    var cell2 = d3.select(this);
+
+    elementData = p;
+    //console.log(elementData["means"]);
+    //console.log(elementData["DOWN"][0]);
+
+    var x = d3.scale.linear()
+        .range([0, width/n - padding]);
+
+    columnNames = Object.keys(dataMatrix).sort(function(a, b){return a-b});
+
+    var x = d3.scale.ordinal()
+            .rangeRoundBands([0, width], 0);
+
+
+        //console.log("names", columnNames);
+
+        x.domain(columnNames);
+
+        //console.log("dom", x.domain());
+
+        //console.log(columnNames);
+
+        //x.domain([globMin, globMax+10]);
+
+        var y = d3.scale.linear()
+            .range([height, 0]);
+
+
+        y.domain([globMin, globMax+10]);
+
+        var z = d3.scale.category10();
+
+        var tip = d3.tip()
+          .attr('class', 'd3-tip')
+          .offset([-10, 0])
+          .html(function(d) {
+            return "<strong>Value:</strong> <span style='color:red'>" + d.y + ": " + d.x + "</span>";
+          });
+
+        //console.log(x.domain());
+
+        var xAxis = d3.svg.axis()
+            .scale(x)
+            .orient("bottom")
+            .tickValues(x.domain())
+            .ticks(columnNames.length);
+
+        var yAxis = d3.svg.axis()
+            .scale(y)
+            .orient("left")
+
+    var directions = ["up", "down"];
+    /*var series = directions.map(function(series){
+      return elementData["means"].map(function(d){
+        //console.log(d);
+        return {x: d["up"], y: d["down"], z: d["pivcol1"]};
+      });
+    });*/
+
+    var series = directions.map(function(series, i){
+      return elementData["means"].map(function(d){
+        //console.log(d, i);
+        return {x: d["pivcol1"], y: d[directions[i]]};
+      });
+    });
+
+    //console.log("element data", elementData);
+
+    cell2.call(tip);
+
+
+    cell2.append("g")
+          .attr("class", "x axis")
+          .attr("transform", "translate(0," + height + ")")
+          .call(xAxis)
+    .selectAll("text")
+    .attr("y", 0)
+    .attr("x", 9)
+    .attr("dy", ".35em")
+    .attr("transform", "rotate(90)")
+    .style("text-anchor", "start");
+
+    cell2.append("g")
+          .attr("class", "y axis")
+          .call(yAxis).append("text")
+        //.attr("transform", "rotate(-90)")
+        .attr("y", 10)
+        .style("font-size","12px")
+        .attr("dy", ".71em")
+        //.style("text-anchor", "end")
+        .html("Mean mbps vs. httpThreads");// + "<br/>" + " partSize=" + elementData["pivcol2"]);
+
+    binarySwitch = ["UP","DOWN"]
+
+
+
+    cell2.selectAll(".series")
+          .data(series)
+        .enter().append("g")
+          .attr("class", "series")
+          .style("fill", function(d, i) { return color(binarySwitch[i]); })
+        .selectAll(".point")
+          .data(function(d) { return d; })
+        .enter().append("circle")
+          .attr("class", "point")
+          .attr("r", 4.5)
+          .attr("cx", function(d) { return x(d.x) + x.rangeBand()/2; })
+          .attr("cy", function(d) { return y(d.y); });
+          //.on('mouseover', tip.show);
+  };
+
+
+  function meanPlot2(p) {
+    width = size - padding;
+    height = size - padding;
+
+    var cell3 = d3.select(this);
+
+    columnNames = Object.keys(dataMatrix[Object.keys(dataMatrix)[1]]).sort(function(a, b){return a-b});
+
+    elementData = p;
+    //console.log("ele", elementData);
+    //console.log(elementData["DOWN"][0]);
+
+    ////console.log(width/columnNames.length);
+
+    var x = d3.scale.ordinal()
+        .rangeRoundBands([0, width], 0);
+
+
+    //console.log("names", columnNames);
+
+    x.domain(columnNames);
+
+    //console.log("dom", x.domain());
+
+    //console.log(columnNames);
+
+    //x.domain([globMin, globMax+10]);
+
+    var y = d3.scale.linear()
+        .range([height, 0]);
+
+
+    y.domain([globMin, globMax+10]);
+
+    var z = d3.scale.category10();
+
+    var tip = d3.tip()
+      .attr('class', 'd3-tip')
+      .offset([-10, 0])
+      .html(function(d) {
+        return "<strong>Value:</strong> <span style='color:red'>" + d.y + ": " + d.x + "</span>";
+      });
+
+    //console.log(x.domain());
+
+    var xAxis = d3.svg.axis()
+        .scale(x)
+        .orient("bottom")
+        .tickValues(x.domain())
+        .ticks(columnNames.length);
+
+    var yAxis = d3.svg.axis()
+        .scale(y)
+        .orient("left")
+
+    var directions = ["up", "down"];
+    /*var series = directions.map(function(series){
+      return elementData["means"].map(function(d){
+        //console.log(d);
+        return {x: d["up"], y: d["down"], z: d["pivcol1"]};
+      });
+    });*/
+
+    var series = directions.map(function(series, i){
+      return elementData["means"].map(function(d){
+        //console.log("point data", d, i);
+        return {x: d["pivcol2"], y: d[directions[i]]};
+      });
+    });
+
+    //console.log("series", series);
+
+    cell3.call(tip);
+
+
+    cell3.append("g")
+          .attr("class", "x axis")
+          .attr("transform", "translate(0," + height + ")")
+          .call(xAxis)
+        .selectAll("text")
+            .attr("y", 0)
+            .attr("x", 9)
+            .attr("dy", ".35em")
+            .attr("transform", "rotate(90)")
+            .style("text-anchor", "start");
+
+    cell3.append("g")
+          .attr("class", "y axis")
+          .call(yAxis).append("text")
+        //.attr("transform", "rotate(-90)")
+        .attr("y", 10)
+        .style("font-size","12px")
+        .attr("dy", ".71em")
+        //.style("text-anchor", "end")
+        .html("Mean mbps vs. partSize");// + "<br/>" + " partSize=" + elementData["pivcol2"]);
+
+    binarySwitch = ["UP","DOWN"]
+
+
+
+    cell3.selectAll(".series")
+          .data(series)
+        .enter().append("g")
+          .attr("class", "series")
+          .style("fill", function(d, i) { return color(binarySwitch[i]); })
+        .selectAll(".point")
+          .data(function(d) { return d; })
+        .enter().append("circle")
+          .attr("class", "point")
+          .attr("r", 4.5)
+          .attr("cx", function(d) { return x(d.x) + x.rangeBand()/2; })
+          .attr("cy", function(d) { return y(d.y); });
+          //.on('mouseover', tip.show);
+  };
+
+
+  function meanPlot3(p) {
+    width = size* 3 - padding;
+    height = size - padding;
+
+    var cell4 = d3.select(this);
+
+    console.log(Object.keys(dataMatrix[Object.keys(dataMatrix)[1]]));
+
+    threadData = p;
+    elementData = {"means": []};
+    namePairs = [];
+    str1 = "pivcol1";
+    str2 = "pivcol2";
+
+    if (Object.keys(threadData[0]).indexOf(str1) >= 0) {
+      for (unit in p) {
+        for (entry in p[0]["means"]){
+            elementData["means"].push({"up": p[unit]["means"][entry]["up"], "down": p[unit]["means"][entry]["down"], "pivcol": p[unit]["pivcol1"] + "," + p[unit]["means"][entry]["pivcol2"], "mem": p[unit]["pivcol1"]*p[unit]["means"][entry]["pivcol2"]});
+            namePairs.push(p[unit]["pivcol1"] + "," + p[unit]["means"][entry]["pivcol2"]);
+            console.log(p[unit]["pivcol1"]*10000);
+        };
+        //elementData.push({"pivcol": p[unit]["pivcol1"] + "," + p[unit]["means"][0]["pivcol2"], "means": tempList});
+      };
+      name = "partSize, httpThreads vs. Mean mbps & ";
+    } else if (Object.keys(threadData[0]).indexOf(str2) >= 0) {
+        for (unit in p) {
+          for (entry in p[0]["means"]){
+              elementData["means"].push({"up": p[unit]["means"][entry]["up"], "down": p[unit]["means"][entry]["down"], "pivcol": p[unit]["pivcol2"] + "," + p[unit]["means"][entry]["pivcol1"], "mem": p[unit]["pivcol2"]*p[unit]["means"][entry]["pivcol1"]});
+              namePairs.push(p[unit]["pivcol2"] + "," + p[unit]["means"][entry]["pivcol1"]);
+          };
+          //elementData.push({"pivcol": p[unit]["pivcol1"] + "," + p[unit]["means"][0]["pivcol2"], "means": tempList});
+        };
+
+      name = "httpThreads, partSize vs. Mean mbps & ";
+    }
+    
+    console.log("pairs", namePairs);
+    console.log("ele", elementData);
+    //console.log(elementData["DOWN"][0]);
+
+
+    columnNames = namePairs.sort(function(a, b){return b-a}).reverse();
+
+    ////console.log(width/columnNames.length);
+
+    var x = d3.scale.ordinal()
+        .rangeRoundBands([0, width], 0);
+
+
+    //console.log("names", columnNames);
+
+    x.domain(columnNames);
+
+    //console.log("dom", x.domain());
+
+    //console.log(columnNames);
+
+    //x.domain([globMin, globMax+10]);
+
+    var y = d3.scale.linear()
+        .range([height, 0]);
+
+
+    y.domain([globMin, globMax+10]);
+
+
+    var z = d3.scale.category10();
+
+    var y1 = d3.scale.linear().range([height, 0]);
+
+
+    y1.domain([0, 3355443200]);
+
+    var tip = d3.tip()
+      .attr('class', 'd3-tip')
+      .offset([-10, 0])
+      .html(function(d) {
+        return "<strong>Value:</strong> <span style='color:red'>" + d.y + ": " + d.x + "</span>";
+      });
+
+    //console.log(x.domain());
+
+    var xAxis = d3.svg.axis()
+        .scale(x)
+        .orient("bottom")
+        .tickValues(x.domain())
+        .ticks(columnNames.length);
+
+    var yAxis = d3.svg.axis()
+        .scale(y)
+        .orient("left");
+
+    var yAxisRight = d3.svg.axis()
+        .scale(y1)
+        .orient("right");
+
+    var directions = ["up", "down"];
+    var mapped = ["mem"]
+    /*var series = directions.map(function(series){
+      return elementData["means"].map(function(d){
+        //console.log(d);
+        return {x: d["up"], y: d["down"], z: d["pivcol1"]};
+      });
+    });*/
+
+    var series = directions.map(function(series, i){
+      return elementData["means"].map(function(d){
+        //console.log("point data", d, i);
+        return {x: d["pivcol"], y: d[directions[i]]};
+      });
+    });
+
+    var memList = mapped.map(function(series, i){
+      return elementData["means"].map(function(d){
+        //console.log("point data", d, i);
+        return {x: d["pivcol"], y: d[mapped[i]]};
+      });
+    });;
+
+    console.log("series", series);
+
+    console.log("mem", memList);
+
+    cell4.call(tip);
+
+
+    cell4.append("g")
+          .attr("class", "x axis")
+          .attr("transform", "translate(0," + height + ")")
+          .call(xAxis)
+        .selectAll("text")
+            .attr("y", 0)
+            .attr("x", 9)
+            .attr("dy", ".35em")
+            .attr("transform", "rotate(90)")
+            .style("text-anchor", "start");
+
+    cell4.append("g")
+          .attr("class", "y axis")
+          .call(yAxis).append("text")
+        //.attr("transform", "rotate(-90)")
+        .attr("y", 10)
+        .style("font-size","12px")
+        .attr("dy", ".71em")
+        //.style("text-anchor", "end")
+        .html(name + "Memory cost");// + "<br/>" + " partSize=" + elementData["pivcol2"]);
+
+    cell4.append("g")             
+        .attr("class", "y axis")    
+        .attr("transform", "translate(" + width + " ,0)")   
+        .style("fill", "red")       
+        .call(yAxisRight);
+
+    binarySwitch = ["UP","DOWN"]
+
+    console.log(series);
+
+    cell4.selectAll(".series")
+          .data(series)
+        .enter().append("g")
+          .attr("class", "series")
+          .style("fill", function(d, i) { return color(binarySwitch[i]); })
+        .selectAll(".point")
+          .data(function(d) { return d; })
+        .enter().append("circle")
+          .attr("class", "point")
+          .attr("r", 4.5)
+          .attr("cx", function(d) { return x(d.x) + x.rangeBand()/2; })
+          .attr("cy", function(d) { return y(d.y); });
+          //.on('mouseover', tip.show);
+
+
+    cell4.selectAll(".memseries")
+          .data(memList)
+        .enter().append("g")
+          .attr("class", "memseries")
+          .style("fill", "red")
+        .selectAll(".point")
+          .data(function(d) { return d; })
+        .enter().append("circle")
+          .attr("class", "point")
+          .attr("r", 4.5)
+          .attr("cx", function(d) { return x(d.x) + x.rangeBand()/2; })
+          .attr("cy", function(d) { return y1(d.y); });
+  };
+
+});
+
+function makeAvgLists(json, matrix) {
+    col1Avgs = [];
+    col2Avgs = [];
+    col1 = json[pivotColumns[0]];
+    col2 = json[pivotColumns[1]];
+    //console.log(col1,col2);
+    for (num1 in col1){
+      col1Avgs.push({"pivcol1": col1[num1], "means": []});
+      for (num2 in col2){
+        //console.log(matrix[col1[num1]][col2[num2]]["MeanUP"],matrix[col1[num1]][col2[num2]]["MeanDOWN"]);
+        col1Avgs[num1]["means"].push({"pivcol2": col2[num2], "up": matrix[col1[num1]][col2[num2]]["MeanUP"], "down": matrix[col1[num1]][col2[num2]]["MeanDOWN"]});
+      }  
+    }
+    for (num2 in col2){
+      col2Avgs.push({"pivcol2": col2[num2], "means": []});
+      for (num1 in col1){
+        //console.log(matrix[col2[num2]][col1[num1]]["MeanUP"],matrix[col2[num2]][col1[num1]]["MeanDOWN"]);
+        col2Avgs[num2]["means"].push({"pivcol1": col1[num1], "up": matrix[col1[num1]][col2[num2]]["MeanUP"], "down": matrix[col1[num1]][col2[num2]]["MeanDOWN"]});
+      }  
+    }
+    //console.log(col2Avgs);
+    return [col1Avgs, col2Avgs];
+}
+
+function makeMatrix(json) {
+    //console.log(json[pivotColumns[0]]);
+    return cross(json[pivotColumns[0]].sort(function(a, b){return a-b}),json[pivotColumns[1]].sort(function(a, b){return a-b}));
+}
+
+function prepareJson(json) {
+  //console.log(json);
+  //for (str in pivotColumns) {
+  //  console.log(pivotColumns[str]);
+  //}
+  dataMatrix = {}
+  for (i=0; i<json[pivotColumns[0]].length; i++) {
+    dataMatrix[json[pivotColumns[0]][i]] = {}
+    for (j=0; j< json[pivotColumns[1]].length; j++) {
+        dataMatrix[json[pivotColumns[0]][i]][json[pivotColumns[1]][j]] = {}
+    }
+  }
+  for (i=0; i<json["data"].length; i++) {
+      dataMatrix[json["data"][i][pivotColumns[0]]][json["data"][i][pivotColumns[1]]] = json["data"][i];
+    }
+    mins = [];
+    maxes = [];
+    meansUP = [];
+    meansDOWN = [];
+    for (s in json["data"]){
+      tempMeansUP = [];
+      tempMeansDOWN = [];
+      for (k in json["data"][s]["tests"]["UP"]){
+        tempMeansUP.push(parseFloat(json["data"][s]["tests"]["UP"][k][" mbps"]));
+        tempMeansDOWN.push(parseFloat(json["data"][s]["tests"]["DOWN"][k][" mbps"]));
+        mins.push(d3.min([parseFloat(json["data"][s]["tests"]["UP"][k][" mbps"]),parseFloat(json["data"][s]["tests"]["DOWN"][k][" mbps"])]));
+        maxes.push(d3.max([parseFloat(json["data"][s]["tests"]["UP"][k][" mbps"]),parseFloat(json["data"][s]["tests"]["DOWN"][k][" mbps"])]));
+      }
+      dataMatrix[json["data"][s][pivotColumns[0]]][json["data"][s][pivotColumns[1]]]["MeanUP"] = d3.mean(tempMeansUP);
+      dataMatrix[json["data"][s][pivotColumns[0]]][json["data"][s][pivotColumns[1]]]["MeanDOWN"] = d3.mean(tempMeansDOWN);
+      //meansUP.push([d3.mean(tempMeansUP), json["data"][s]]);
+      //meansDOWN.push([d3.mean(tempMeansDOWN), json["data"][s]]);
+    }
+    //console.log(meansUP);
+    //console.log(meansDOWN);
+    //console.log(dataMatrix);
+    globMin = d3.min(mins);
+    globMax = d3.max(maxes);
+    return dataMatrix;
+};
+
+
+
+  function cross(a, b) { //this is cross product of two lists, outputs a list of dicts with keys i,j,x,y, where i is index in first list, j in second index, x is the value of a[i], y is the value of b[j], and the order of the output list is 00, 01, ..., 10, ...
+    var c = [], n = a.length, m = b.length, i, j;
+    for (i = -1; ++i < n;) for (j = -1; ++j < m;) c.push({x: a[i], i: i, y: b[j], j: j});
+    return c;
+  }
+
+</script>
